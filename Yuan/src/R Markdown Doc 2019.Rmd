@@ -1,0 +1,334 @@
+---
+title: "R in Insurance Codes for Presentation 2019"
+author: "YT"
+date: "November 2019"
+output:
+    html_document:
+    toc: TRUE
+    toc_depth: 3
+    collapsed: false
+    fig_caption: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+# Loading data from Excel into R
+
+```{r , warning=FALSE}
+
+library(readxl)
+library(readr)
+
+#examplefile<-"C:/Users/sgartiyu/Desktop/R/multiTimelineActuaryvsDatascience.csv"
+#input<-read_csv(examplefile)
+
+#examplefilexl<-"C:/Users/sgartiyu/Desktop/R/multiTimelineActuaryvsDatascience.xlsx"
+#inputexcel<-read_excel(examplefilexl,sheet="data")
+```
+
+
+#ggplot2 examples
+##Example 1: Midwest data
+
+```{r , warning=FALSE}
+
+library(ggplot2)
+midwest <- read.csv("http://goo.gl/G1K41K")
+options(scipen=999)
+theme_set(theme_bw())  # pre-set the bw theme.
+data("midwest", package = "ggplot2")
+
+# Scatterplot
+gg <- ggplot(midwest, aes(x=area, y=poptotal)) + 
+  geom_point(aes(col=state, size=popdensity)) + 
+  geom_smooth(method="loess", se=F) + 
+  xlim(c(0, 0.1)) + 
+  ylim(c(0, 500000)) + 
+  labs(subtitle="Area Vs Population", 
+       y="Population", 
+       x="Area", 
+       title="Scatterplot", 
+       caption = "Source: midwest")
+
+plot(gg)
+```
+
+##Example 2: mpg data
+http://r-statistics.co/Top50-Ggplot2-Visualizations-MasterList-R-Code.html#top
+```{r , warning=FALSE}
+
+mpg <- read.csv("http://goo.gl/uEeRGu")
+data(mpg, package="ggplot2")
+g <- ggplot(mpg, aes(manufacturer))
+g + geom_bar(aes(fill=class), width = 0.5) + 
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) + 
+  labs(title="Histogram on Categorical Variable", 
+       subtitle="Manufacturer across Vehicle Classes") 
+```
+
+```{r , warning=FALSE}
+g <- ggplot(mpg, aes(class, cty))
+g + geom_boxplot(varwidth=T, fill="plum") + 
+  labs(title="Box plot", 
+       subtitle="City Mileage grouped by Class of vehicle",
+       caption="Source: mpg",
+       x="Class of Vehicle",
+       y="City Mileage")
+```
+
+
+#leaflet Example
+Example 1 : Energy Production Data
+https://cran.r-project.org/web/packages/leaflet.minicharts/vignettes/introduction.html
+
+```{r , warning=FALSE}
+
+library(leaflet)
+library(leaflet.minicharts)
+library(dplyr)
+
+prod2016 <- eco2mix %>%
+  mutate(
+    renewable = bioenergy + solar + wind + hydraulic,
+    non_renewable = total - bioenergy - solar - wind - hydraulic
+  ) %>%
+  filter(grepl("2016", month) & area != "France") %>%
+  select(-month) %>%
+  group_by(area, lat, lng) %>%
+  summarise_all(sum) %>%
+  ungroup()
+
+tilesURL <- "http://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+
+basemap <- leaflet(width = "100%", height = "400px") %>%
+  addTiles(tilesURL)
+
+
+colors <- c("#4fc13c", "#cccccc")
+
+basemap %>%
+  addMinicharts(
+    prod2016$lng, prod2016$lat,
+    type = "pie",
+    chartdata = prod2016[, c("renewable", "non_renewable")], 
+    colorPalette = colors, 
+    width = 60 * sqrt(prod2016$total) / sqrt(max(prod2016$total)), transitionTime = 0
+  )
+
+
+renewable2016 <- prod2016 %>% select(hydraulic, solar, wind)
+colors <- c("#3093e5", "#fcba50", "#a0d9e8")
+basemap %>%
+  addMinicharts(
+    prod2016$lng, prod2016$lat,
+    chartdata = renewable2016,
+    colorPalette = colors,
+    width = 45, height = 45
+  )
+
+basemap %>%
+  addMinicharts(
+    prod2016$lng, prod2016$lat,
+    chartdata = prod2016$load,
+    showLabels = TRUE,
+    width = 45
+  )
+
+```
+
+#Example 2 : Leaflet vs GoogleVis for Earthquake data
+https://rawgit.com/mages/GIRO2012/master/Using_R_in_Insurance_GIRO_2012.html
+```{r , warning=FALSE}
+library(XML)
+library(googleVis)
+
+## Source data diretly from the web
+url <- "http://ds.iris.edu/sm2/eventlist/"
+eq <- readHTMLTable(readLines(url),
+                    colClasses=c("factor", rep("numeric", 4), "factor"))$evTable
+names(eq) <- c("DATE", "LAT", "LON", "MAG",
+               "DEPTH", "LOCATION_NAME", "IRIS_ID")
+##Format location data
+eq$loc=paste(eq$LAT, eq$LON, sep=":")  
+summary(eq)
+
+#Display earth quake information of last 30 days
+
+## Create a geo chart with the Google Chart API
+G <- gvisGeoChart(eq, "loc", "DEPTH", "MAG",
+                  options=list(displayMode="Markers", 
+                               colorAxis="{colors:['purple', 'red', 'orange', 'grey']}",
+                               backgroundColor="lightblue"), chartid="EQ")
+
+plot(G)
+
+
+#use leaflet to plot 
+tilesURL <- "http://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+
+basemap <- leaflet() %>%
+  addTiles(tilesURL)
+
+basemap %>%
+    addMinicharts(
+    eq$LON, eq$LAT,
+    chartdata=eq$MAG,
+    showLabels = TRUE,
+    width = 10
+  )
+
+```
+
+#R Plotly example
+
+```{r , warning=FALSE}
+library(gsl)
+library(mbbefd)
+library(plotly)
+
+TIVpct<-seq(0,1,0.001)
+trace_1<-ecMBBEFD(TIVpct,swissRe(1)[["g"]],swissRe(1)[["b"]])
+trace_2<-ecMBBEFD(TIVpct,swissRe(2)[["g"]],swissRe(2)[["b"]])
+trace_3<-ecMBBEFD(TIVpct,swissRe(3)[["g"]],swissRe(3)[["b"]])
+data<-data.frame(TIVpct,trace_1,trace_2,trace_3)
+
+plot_ly(data,x=TIVpct,y=trace_1,name="SwissRe1",type='scatter',mode='lines')%>%
+  add_trace(y=trace_2,name="SwissRe2",mode='lines')%>%
+  add_trace(y=trace_3,name="SwissRe3",mode='lines')
+```
+
+
+#GLM Generalized Linear Model example
+from website https://www.guru99.com/r-generalized-linear-model.html
+```{r , warning=FALSE}
+traindata<-read.csv("https://raw.githubusercontent.com/guru99-edu/R-Programming/master/adult.csv")
+head(traindata,10)
+
+```
+
+```{r , warning=FALSE}
+names(traindata)
+```
+
+
+```{r , warning=FALSE}
+ggplot(traindata, aes(x = gender, fill = income)) +
+  geom_bar(position = "fill") +
+  theme_classic()+theme(axis.text.x = element_text(angle = 90))
+```
+
+
+
+```{r , warning=FALSE}
+ggplot(traindata, aes(x = marital.status, fill = income)) +
+  geom_bar(position = "fill") +
+  theme_classic()+theme(axis.text.x = element_text(angle = 90))
+```
+
+
+
+
+```{r , warning=FALSE}
+ggplot(traindata, aes(x = gender, y = hours.per.week)) +
+  geom_boxplot() +
+  stat_summary(fun.y = mean,
+               geom = "point",
+               size = 3,
+               color = "steelblue") +
+  theme_classic()
+```
+
+
+
+```{r , warning=FALSE}
+library(GGally)
+library(dplyr)
+# Convert data to numeric
+corr <- data.frame(lapply(traindata, as.integer))
+# Plot the graph
+ggcorr(corr,
+method = c("pairwise", "spearman"),
+nbreaks = 6,
+hjust = 0.8,
+label = TRUE,
+label_size = 3,
+color = "grey50")
+
+
+#setting train and test datasets
+recast_data <- traindata %>%
+                select(-x)
+set.seed(1234)
+create_train_test <- function(data, size = 0.8, train = TRUE) {
+  n_row = nrow(data)
+  total_row = size * n_row
+  train_sample <- 1: total_row
+  if (train == TRUE) {
+    return (data[train_sample, ])
+  } else {
+    return (data[-train_sample, ])
+  }
+}
+data_train <- create_train_test(recast_data, 0.8, train = TRUE)
+data_test <- create_train_test(recast_data, 0.8, train = FALSE)
+dim(data_train)
+
+
+formula <- income~.
+logit <- glm(formula, data = data_train, family = 'binomial')
+summary(logit)
+
+predict <- predict(logit, data_test, type = 'response')
+
+# confusion matrix
+table_mat <- table(data_test$income, predict > 0.5)
+table_mat
+
+# accuracy Test
+accuracy_Test <- sum(diag(table_mat)) / sum(table_mat)
+accuracy_Test
+```
+
+#ChainLadder Example
+https://gist.github.com/mages/3687713/659b2826d429823ff4ddb139d4d1bf46fe794dac https://rawgit.com/mages/GIRO2012/master/Using_R_in_Insurance_GIRO_2012.html
+
+```{r , warning=FALSE}
+library(ChainLadder)
+
+library(googleVis)
+
+RAA
+
+MCL <- MackChainLadder(RAA)
+plot(MCL)
+
+MCL
+class(RAA)
+
+df <- as.data.frame((RAA))
+names(df)
+ggplot(df,aes(x=dev,y=value/1000,color=origin,group=origin))+geom_line() 
+
+data(GenIns)
+dimnames(GenIns)$origin=2002:2011
+GenIns <- GenIns/1000
+GenIns<-round(GenIns, 0)
+df2<-as.data.frame((GenIns))
+MCL <- MackChainLadder(GenIns)
+plot(MCL)
+MCL
+ggplot(df2,aes(x=dev,y=value,color=origin,group=origin))+
+  geom_line(size=1)+
+  geom_point()+
+  ggtitle("Chart 1: Reserving Incurred Development Patterns")+
+  xlab("Development Year")+
+  ylab("Incurred Amount")
+  
+```

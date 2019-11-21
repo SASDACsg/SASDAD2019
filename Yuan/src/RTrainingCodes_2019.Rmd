@@ -1,0 +1,293 @@
+---
+title: "R Workshop - Example"
+author: "YT"
+date: "November 2019"
+output:
+    html_document:
+    toc: TRUE
+    toc_depth: 3
+    collapsed: false
+    fig_caption: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Purpose
+
+A typical R project may include the following steps (depending on the purpose):  
+
+Step 1: Reading libraries needed for the project
+
+Step 2: Loading dataset
+
+Step 3: Analysing and manipulating the dataset and data visualisation
+
+Step 4: Fitting models and testing goodness of fit
+
+Step 5: Data output 
+
+
+This workshop is to show an example of using R for generalised linear model fitting and to help people get started with R. 
+
+This document contains R codes used in this example
+
+# Contents
+
+## Step 1: Loading R Libraries
+
+Loading the R libraries that are needed for the project 
+
+```{r , warning=FALSE}
+#install and load packages
+#install.packages("readxl")
+library(readxl)
+library(readr)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+
+```
+## Step 2: Loading datasets
+
+Import dataset using readxl and readr. In this example, we would load a dataset from package insuranceData.
+
+For more Singapore Automobile Claims data description: 
+
+The data is from the General Insurance Association of Singapore, an organization consisting of general (property and casualty) insurers in Singapore (see the organization’s website: www.gia.org.sg).From this database, several characteristics are available to explain automobile accident frequency.These characteristics include vehicle variables, such as type and age, as well as person level variables, such as age, gender and prior driving experience.
+
+https://instruction.bus.wisc.edu/jfrees/jfreesbooks/Regression%20Modeling/BookWebDec2010/DataDescriptions.pdf
+
+About InsuranceData packages: https://cran.r-project.org/web/packages/insuranceData/insuranceData.pdf
+
+
+
+```{r }
+
+#Inputfile<-"D:/YT_R/HandsOn/SingaporeData.csv"   
+#InputData<-read_csv(Inputfile)
+library(insuranceData)
+data(SingaporeAuto)
+df <-as.data.frame(SingaporeAuto)
+
+```
+
+
+##Step 3: Analysing and manipulating the dataset
+
+###Highlevel Summary of Data
+
+```{r }
+names(df)
+dim(df)
+colnames(df)
+head(df,10)
+summary(df)
+str(df)
+hist(df$Clm_Count)
+table(df$Clm_Count)
+levels(as.factor(df$SexInsured))
+```
+
+###Data manipulation
+
+Data Analysis  - understanding the dataset
+```{r }
+#Summary of claim count by chosen factors using dplyr 
+df%>%
+      group_by(VehicleType,SexInsured)%>%
+      summarise(number=n(),
+                Count=sum(Clm_Count),
+                Exposure=sum(Exp_weights),
+                Frequency=Count/Exposure)
+
+
+# Exercise : choose other factors and produce a summary table
+
+```
+###Data Clean
+
+Data Cleaning - generating a cleaned dataset
+```{r }
+#Summary of claim count by chosen factors using dplyr 
+df_clean <- df %>%
+  transmute(SexInsured=factor(SexInsured),
+            Female=factor(Female),
+            Private=factor(PC),
+            NCDCat=factor(NCD),
+            AgeCat=factor(AgeCat),
+            VAgeCat=factor(VAgeCat),
+            Exp_weights,
+            Clm_Count,
+            Frequency = Clm_Count/Exp_weights
+  )
+
+
+# Exercise : choose other factors and produce a summary table
+
+```
+
+###Data Visualisation
+```{r }
+#Using self-defined functions: 
+  
+avg <- function(x) {
+  dat <- aggregate(df$Clm_Count, by = list(df[, x]), FUN = mean)
+  barplot(dat$x, xlab = x, ylab = "Claim Count Averages")
+  axis(side=1, at=1:nrow(dat), labels=dat$Group.1)
+}
+
+par(mfrow=c(2,2))
+avg(x = "AgeCat")
+avg(x = "VehicleType")
+avg(x = "AutoAge1")
+avg(x = "VAgeCat")
+  avg(x = "NCD")
+  avg(x = "PC")
+  avg(x = "SexInsured")
+  
+  
+```
+
+```{r }
+#Using plotly: 
+  
+df_clean$ID <- seq.int(nrow(df_clean))
+y<-sort(df_clean$Frequency,decreasing=FALSE)
+plot_ly(df_clean,x=df_clean$ID,y=y,name="test",type='scatter',mode='lines')
+  
+  
+```
+
+```{r }
+#Using ggplot2: 
+  
+
+
+#two-way 
+ggplot(df_clean, aes(x = SexInsured, fill = NCDCat)) +
+  geom_bar(position = "fill") +
+  theme_classic()+theme(axis.text.x = element_text(angle = 90))
+
+# explore frequency by factors
+ggplot(data=df_clean, aes(x=AgeCat, y=Clm_Count/Exp_weights, fill=SexInsured)) +
+  geom_bar(stat="identity", position=position_dodge())
+
+ggplot(data=df_clean, aes(x=AgeCat, y=Clm_Count, fill=SexInsured)) +
+  geom_bar(stat="identity", position=position_dodge())
+
+ggplot(data=df_clean, aes(x=AgeCat, y=Clm_Count)) +
+  geom_bar(stat="identity", position=position_dodge())
+
+g <- ggplot(data=df_clean)+scale_y_continuous(labels = scales::percent)
+germ_claims <- g+geom_bar(aes_string(x="Clm_Count",y="..prop..",weight="Exp_weights/sum(Exp_weights)"))+ggtitle("Claim counts")+labs(x=NULL, y="% exposure")
+germ_claims
+
+#Facet the claims bar chart
+
+germ_claims+facet_grid(.~NCDCat)+ggtitle("Claim counts by NCDCat")
+
+germ_claims+facet_grid(.~AgeCat)+ggtitle("Claim counts by AgeCat")
+  
+  
+```
+
+##Step 4: Fitting models and testing goodness of fit
+
+### a) Split dataset to training and validation
+```{r }
+
+training <- 0.80
+df_training <- sample(1:nrow(df_clean), size = nrow(df_clean) * training, replace = FALSE)
+df_train <- df_clean [df_training,]
+df_validate <- df_clean [-df_training,]
+
+
+```
+### b) Starting with an intercept model and check the mean against original data
+```{r }
+
+
+poisson_intercept <- glm(Clm_Count~1, data =df_train, family=poisson(link=log),offset=log(Exp_weights))
+summary(poisson_intercept)
+
+paste("Check average model frequency",exp(poisson_intercept$coefficients[["(Intercept)"]]),"vs data average frequency",sum(df_train$Clm_Count)/sum(df_train$Exp_weights))
+
+
+```
+
+
+### c) Fit a model with all factors and use stepwise function to test models
+```{r }
+
+model_full <-glm(Clm_Count ~ .-Exp_weights-Frequency-ID , data =df_train, family=poisson(link=log),offset=log(Exp_weights))
+model_stepwise <- step(poisson_intercept, scope=list(lower=poisson_intercept, upper=model_full), direction = "both")
+
+
+```
+
+### d) Fit a model using chosen factors and compare models using annova
+```{r }
+
+
+formulas_1<-"Clm_Count ~ SexInsured"
+formulas_2<-"Clm_Count ~ NCDCat + VAgeCat"
+formulas_3<-"Clm_Count ~ SexInsured+NCDCat+AgeCat+VAgeCat"
+
+poisson_reg1 <- glm(formulas_1, data =df_train, family=poisson(link=log),offset=log(Exp_weights))
+summary(poisson_reg1)
+
+poisson_reg2 <- glm(formulas_2, data =df_train, family=poisson(link=log),offset=log(Exp_weights))
+summary(poisson_reg2)
+
+poisson_reg3 <- glm(formulas_3, data =df_train, family=poisson(link=log),offset=log(Exp_weights))
+summary(poisson_reg3)
+
+# for nested model comparison, hence not use for reg2 and reg1 comparison 
+anova(poisson_reg1,poisson_reg3,test="Chisq") 
+```
+
+
+### d) Model Prediction
+```{r }
+
+final_model<-poisson_reg3
+
+df_train$predict<-exp(predict(final_model))/df_train$Exp_weights
+
+mean(df_train$predict)
+mean(df_train$Frequency)
+sum(df_train$Clm_Count)/sum(df_train$Exp_weights)
+
+
+```
+### e) Fit model to hold-on data and test
+
+```{r }
+
+final_model<-poisson_reg3
+
+df_validate$predict<-exp(predict(final_model,newdata=df_validate))/df_validate$Exp_weights
+
+mean(df_validate$predict)
+mean(df_validate$Frequency)
+sum(df_validate$Clm_Count)/sum(df_validate$Exp_weights)
+```
+##Step 5: Output Dataset
+
+
+```{r }
+#Output to Excel or CSV
+
+#write.csv(check,file="P:/YT_R/HandsOn/output.csv")
+
+write.csv(df_validate,file="/Users/yuantian2019/Downloads/output.csv")
+# or write_csv from readr package, which is faster than write.csv
+
+```
+
+
+#End of the document 

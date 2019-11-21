@@ -1,0 +1,27 @@
+---
+title: "R Workshop -- Exercise"
+author: "YT"
+date: "November 2019"
+output:
+    html_document:
+    toc: TRUE
+    toc_depth: 3
+    collapsed: false
+    fig_caption: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Exercise
+
+Step 1: Load insurancedata package, using data() to load data dataCar and explore the dataset, explore the difference between numclaims and clm using table().
+
+Step 2: Build a frequency table(i.e. no of claims / exposure) by factors (e.g. veh_age); Convert data type for veh_age to factor using as.factor.
+
+Step 3: Using ggplot2 to draw some bar charts : e.g. exploring the relationship between claim frequency(clm/exposure) and veh_age and agecat, and explore whether the pattern is the same for male/female. 
+
+Step 4: Fitting a glm to claim frequency using chosen factors, e.g. veh_body,veh_age,gender,area. 
+
+
+

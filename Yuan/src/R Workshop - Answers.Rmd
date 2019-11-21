@@ -1,0 +1,82 @@
+---
+title: "R Workshop - Exercise Model Answer"
+author: "YT"
+date: "November 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Exercise
+
+Step 1: Load insurancedata package ,using data() to load data dataCar and explore the dataset, explore the difference between numclaims and clm using table().
+
+Step 2: Build a frequency table(i.e. no of claims / exposure) by factors (e.g. veh_age) Convert data type for veh_age to factor using as.factor.
+
+Step 3: Using ggplot2 to draw some bar charts : e.g. exploring the relationship between claim frequency(clm/exposure) and veh_age and agecat, and explore whether the pattern is the same for male/female. 
+
+Step 4: Fitting a glm to claim frequency using chosen factors, e.g. veh_body,veh_age,gender,area. 
+
+
+# Step 1
+```{r , warning=FALSE}
+#install and load packages
+#install.packages("insurancedata"")
+library(insuranceData)
+data(dataCar)
+summary(dataCar)
+head(dataCar)
+colnames(dataCar)
+str(dataCar)
+table(dataCar$numclaims)
+table(dataCar$clm)
+hist(dataCar$numclaims)
+levels(as.factor(dataCar$veh_body))
+levels(as.factor(dataCar$agecat))
+
+```
+
+#Step 2
+```{r , warning=FALSE}
+
+
+library(dplyr)
+
+dataCar%>%
+      group_by(agecat)%>%
+      summarise(number=n(),
+                Count=sum(numclaims),
+                Exposure=sum(exposure),
+                Frequency=Count/Exposure)
+dataCar$veh_age<-as.factor(dataCar$veh_age)
+str(dataCar$veh_age)
+
+```
+
+#Step 3
+
+```{r pressure, echo=FALSE}
+library(ggplot2)
+ggplot(data=dataCar, aes(x=agecat, y=numclaims/exposure, fill=gender)) +
+  geom_bar(stat="identity", position=position_dodge())
+
+
+g <- ggplot(data=dataCar)+scale_y_continuous(labels = scales::percent)
+germ_claims <-g+ geom_bar(aes_string(x="numclaims",y="..prop..",weight="exposure/sum(exposure)"))+ggtitle("Claim counts")+labs(x=NULL, y="% exposure")
+germ_claims
+
+```
+
+#Step 4
+
+```{r}
+
+poisson_reg1 <- glm(numclaims~veh_body+veh_age+gender+area, data =dataCar,family=poisson(link=log),offset=log(exposure))
+summary(poisson_reg1)
+
+```
+
+
+#End of the document 
