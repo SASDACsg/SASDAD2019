@@ -2,12 +2,14 @@
 title: "Machine Learning in R"
 author: "Nick Gabriele"
 date: "11/22/2019"
-output: 
+output:
+  pdf_document:
+    toc: yes
   html_document:
-    toc: true
-    toc_float: true
-    number_sections: true
+    number_sections: yes
     theme: cerulean
+    toc: yes
+    toc_float: yes
 ---
 
 ```{r setup, include=F}
@@ -77,7 +79,7 @@ Load the original dataset as a dataframe.
 library(insuranceData)
 data(SingaporeAuto)  # Load dataset into environment
 data.all <- as.data.frame(SingaporeAuto)  
-#data.all[, c('AutoAge0', 'AutoAge1', 'AutoAge2', 'AutoAge')] <- NULL  # Remove interactions
+data.all[, c('AutoAge0', 'AutoAge1', 'AutoAge2', 'AutoAge')] <- NULL  # Remove interactions
 head(data.all)  # Display a few rows
 ```
 
@@ -86,7 +88,8 @@ head(data.all)  # Display a few rows
 To simplify the problem, we recode the target variable to indicate _whether_ a policy has incurred claims (1 if affirmative), as opposed to claim frequency. This allows us to consider classification methods, an indispensible class of machine learning models. Such an action is also justified because instances of two or more claims are sparse and therefore lack credibility.
 
 ```{r}
-data.all$Clm_Flag <- as.factor(ifelse(data.all$Clm_Count >= 1, "Y", "N"))  # Recode to binary classification
+# Recode to binary classification
+data.all$Clm_Flag <- as.factor(ifelse(data.all$Clm_Count >= 1, "Y", "N"))
 data.all$Clm_Count <- NULL
 summary(data.all$Clm_Flag)  # Show number of instances where claims occurred
 ```
@@ -103,18 +106,20 @@ data.training <- data.all[training.indices, ]  # Use selected rows for training 
 data.testing <- data.all[-training.indices, ]  # Use remainder for testing data
 ```
 
-For insurance datasets involving claims, it is common for the positive (i.e. $Clm\_Flag =$ "Y") responses to represent a minority of the overall exposures. This can lead to weak discriminating power between the positive and negative classes. One possible solution is to employ oversampling of the minority group, undersampling of the majority group, or some combination thereof. This can enhance the definition of the borders of each class in the feature space, and thus improve sensitivity (minimize false negatives) and precision (minimize false positives).
+For insurance datasets involving claims, it is common for the positive (i.e. $Clm\_Flag =$ "Y") responses to represent a minority of the overall exposures. If left unchecked, this can lead to weak discriminating power between the positive and negative classes during the modeling phase.
+
+One possible solution is to employ oversampling of the minority group, undersampling of the majority group, or some combination thereof. This can enhance the definition of the borders of each class in the feature space, and thus improve sensitivity (minimize false negatives) and precision (minimize false positives).
 
 ```{r message=F}
 samp.scale <- sum(data.training[data.training$Clm_Flag == "N", "Exp_weights"]) /
   sum(data.training[data.training$Clm_Flag == "Y", "Exp_weights"])
-data.training$Exp_weights <- data.training$Exp_weights * ifelse(data.training$Clm_Flag == "Y", samp.scale, 1)
+data.training$Exp_weights <- data.training$Exp_weights *
+  ifelse(data.training$Clm_Flag == "Y", samp.scale, 1)  # Upsample the minority class
 
 library(dplyr)
-data.training %>%
+data.training %>%  # Show table to check that oversampling worked
   group_by(data.training$Clm_Flag) %>%
   summarize(Count = n(), Exposure = sum(Exp_weights), AvgExposure = n()/sum(Exp_weights))
-
 ```
 
 > __Knowledge Check:__ In the above code, oversampling is performed without adding any new rows. How is this possible?
@@ -125,7 +130,7 @@ data.training %>%
 
 ### Building a Tree
 
-A decision tree recursively partitions the feature space by selecting a split point that maximizes the impurity reduction (for classification) or minimizes the loss function (for regression) at each node. The algorithm terminates when one of the control parameters (e.g. maximum depth, minimum bucket size) has been invalidated or no further improvement can be made. The resulting leaf nodes are the basis for new predictions.
+A decision tree recursively partitions the feature space by selecting a split point that maximizes the __impurity reduction__ (for classification) or minimizes the loss function (for regression) at each node. The algorithm terminates when one of the control parameters (e.g. maximum depth, minimum bucket size) has been invalidated or no further improvement can be made. The resulting leaf nodes are the basis for new predictions.
 
 ```{r}
 library(rpart)
@@ -150,7 +155,7 @@ rpart.plot(model.tree)  # Visualize the tree model
 
 Decision trees are broadly applicable, straightforward to interpret, and robust against missing values (via __surrogate splits__), but are vulnerable to _overfitting_ and tend to favor highly divisible features. However, this can be addressed by:
 
-* Cost-complexity _pruning_, a post-processing step that removes selected nodes based on impurity criteria.
+* Cost-complexity _pruning_, a post-processing step that removes selected nodes based on some criteria.
 * __Cross-validation__, which evenly divides the dataset into $n$ folds, each of which contains a holdout set to evaluate a model that has been trained on the other $n-1$ folds.
 
 In the latter case, any of the __hyperparameters__ can be _tuned_ against the average error rate. In the interest of parsimony, an appropriate selection of a hyperparameter usually considers the point at which there is diminishing benefit for cross-validation error.
@@ -159,21 +164,22 @@ In the latter case, any of the __hyperparameters__ can be _tuned_ against the av
 plotcp(model.tree)  # Plot cross-validation error versus complexity parameter
 ```
 
-While cross-validation is a reliable technique in the machine learning toolkit, it is important to remember that this it is only as useful as the available data, and there may be unobservable factors governing the true population dynamics. In particular, if the dataset is sparsely populated or lacking in distinctive features (a.k.a. __signal__), it is still possible to overfit to noise. There may also be cases where it is not appropriate to partition (e.g. imbalanced datasets result in degenerative folds) or cases where the partitioned sets underfit the data, but this should be detectable across folds.
+While cross-validation is a reliable technique in the machine learning toolkit, it is important to keep in mind that this is only as useful as the available data, and there may be unobservable factors governing the true population dynamics. In particular, if the dataset is sparsely populated or lacking in signaling features, it is still possible to overfit to noise. There may also be cases where it is not appropriate to partition (e.g. imbalanced datasets result in degenerative folds) or cases where the partitioned sets underfit the data; however, this should be detectable across folds.
 
-> __Knowledge Check:__ The above graph plots the average error rate produced over the $n$ folds for possible choices of the _complexity parameter_, defined as the minimum impurity reduction needed for the learning algorithm to continue splitting nodes. What is a reasonable choice for the value of the complexity parameter, and how would the depth of the tree change?
+> __Knowledge Check:__ The above graph plots the average error rate produced over the ``xval = 5`` folds for possible choices of the _complexity parameter_, defined as the minimum impurity reduction needed for the learning algorithm to continue splitting nodes. What is a reasonable choice for the value of the complexity parameter, and how would the depth of the tree change?
 
 ### Predicting New Observations
 
-A predictive modeling problem typically involves taking a position on what might happen in the future based on the historical data, in contrast to descriptive or prescriptive analytics. To assess whether the model generalizes well to as-yet unseen data, the testing set is utilized. By holding out a portion of data until the evaluation stage, models can be fairly compared against each other in what approximates a live setting.
+A predictive modeling problem typically involves taking a position on what might happen in the future based on historical data, in contrast to descriptive or prescriptive analytics. To assess whether the model generalizes well to as-yet unseen data, the testing set is utilized. By holding out a portion of data until the evaluation stage, models can be fairly compared against each other in what approximates a live setting.
 
 ```{r}
-pred.tree <- predict(model.tree, data.testing, type = "prob")  # Generate predicted claim incidence
-pred.tree <- pred.tree[, "Y"] * data.testing$Exp_weights  # Multiply by policy year exposure
-pred.tree <- as.factor(ifelse(pred.tree <= 0.5, "N", "Y"))  # Map to binary response using threshold
+pred.tree <- predict(model.tree, data.testing, type = "prob")  # Predict claim incidence
+pred.tree <- pred.tree[, "Y"] * data.testing$Exp_weights  # Multiply by exposure
+pred.tree <- as.factor(ifelse(pred.tree <= 0.5, "N", "Y"))  # Coerce to binary response
 
+# Create confusion matrix
 library(e1071)
-confusionMatrix(data = pred.tree, reference = data.testing$Clm_Flag, positive = "Y")  # Create confusion matrix
+confusionMatrix(data = pred.tree, reference = data.testing$Clm_Flag, positive = "Y")
 ```
 
 For reference, the performance measures printed in the confusion matrix are formulated as follows:
@@ -203,7 +209,7 @@ Leveraging the wisdom of crowds, ensemble methods construct several submodels to
 
 ```{r message=F}
 library(ranger)
-set.seed(1000)  # Set seed for reproducibility
+set.seed(1000)
 model.bag <- ranger(Clm_Flag ~ SexInsured + Female + VehicleType + PC + NCD + AgeCat + VAgeCat,
                     data = data.training,
                     num.trees = 20,  # Number of trees to construct
@@ -217,35 +223,38 @@ model.bag <- ranger(Clm_Flag ~ SexInsured + Female + VehicleType + PC + NCD + Ag
                     case.weights = data.training$Exp_weights,  # Use exposure weights
                     splitrule = 'gini')
 
-MapPrediction <- function(model, data, threshold) {
-  predictions <- predict(model, data)  # Generate predicted claim incidence
-  predictions <- predictions$predictions[, "Y"] * data$Exp_weights  # Multiply by policy year exposure
-  predictions <- as.factor(ifelse(predictions <= threshold, "N", "Y"))  # Map to binary response using threshold
+Coerce <- function(model, data, threshold) {
+  predictions <- predict(model, data)
+  predictions <- predictions$predictions[, "Y"] * data$Exp_weights
+  predictions <- as.factor(ifelse(predictions <= threshold, "N", "Y"))
   predictions
 }
 
-pred.bag <- MapPrediction(model.bag, data.testing, 0.5)
-confusionMatrix(data = pred.bag, reference = data.testing$Clm_Flag, positive = "Y")
+pred.bag <- Coerce(model.bag, data.testing, 0.5)
+confusionMatrix(pred.bag, data.testing$Clm_Flag, positive = "Y")
 ```
 
-> __Knowledge Check:__ Examine the arguments of the ``MapPredictions`` function. How do the performance measures change when the function evaluates the training data instead of the testing data? What happens to $TPR$ and $TNR$ as the probability threshold increases beyond 0.5?
+> __Knowledge Check:__ Examine the arguments of the ``Coerce`` function. How do the performance measures change when the function evaluates the training data instead of the testing data? What happens to $TPR$ and $TNR$ as the probability threshold increases beyond 0.5?
 
 ### Ranking Variable Importance
 
-A common criticism of ensemble methods is that their oft-superior predictive capabilities come at the expense of transparency. Whereas linear models can effortlessly link two or more variables via coefficients, non-parametric models are inherently fragmented and abstractions are often strained. However, this can be mitigated with feature importance rankings. In particular, the number of times a feature is used to partition across trees can be enumerated, and weighted in proportion to the number of observations it splits.
+A common criticism of ensemble methods is that their oft-superior predictive capabilities come at the expense of transparency. Whereas linear models can effortlessly link two or more variables via coefficients, non-parametric models are inherently fragmented and abstractions are often strained. However, this can be mitigated with feature importance rankings. In particular, the number of times a feature is used to partition across trees can be enumerated.
 
 ```{r}
-var.imp <- data.frame(Feature = names(model.bag$variable.importance),  # Extract variable importance rankings
+# Extract variable importance rankings
+var.imp <- data.frame(Feature = names(model.bag$variable.importance),
                       Splits = model.bag$variable.importance, row.names = NULL)
 
 library(ggplot2)
 ggplot(var.imp, aes(x = reorder(Feature, Splits), y = Splits)) +  # Plot variable importance
   geom_bar(stat = 'identity') +
-  labs(x = "Feature", y = "Number of Times Feature is Used to Partition") +
+  labs(x = "Feature", y = "Mean Decrease in Impurity") +
   coord_flip()
 ```
 
-> __Knowledge Check:__ How is it possible for the variables $VAgeCat$ and $NCD$ to be used 106 and 68 times, respectively, when only 50 trees are constructed?
+The bar chart above ranks variables according to their mean decrease in impurity, which is the impurity reduction that results from splitting a node, averaged across all trees and weighted in proportion to the number of observations that the variable splits, expressed as a percentage.
+
+> __Knowledge Check:__ How is it possible for the variable $VAgeCat$ to have a mean decrease in impurity of over 100%?
 
 ## Random Forests
 
@@ -268,8 +277,8 @@ model.forest <- ranger(Clm_Flag ~ SexInsured + Female + VehicleType + PC + NCD +
                        case.weights = data.training$Exp_weights,
                        splitrule = 'gini')
 
-pred.forest <- MapPrediction(model.forest, data.testing, 0.5)
-confusionMatrix(data = pred.forest, reference = data.testing$Clm_Flag, positive = "Y")
+pred.forest <- Coerce(model.forest, data.testing, 0.5)
+confusionMatrix(pred.forest, data.testing$Clm_Flag, positive = "Y")
 ```
 
 > __Knowledge Check:__ Experiment with the different hyperparameter values in the random forest model for the training data. Are you able to improve the model fit? Do the same gains carry over once evaluated against the testing data?
@@ -299,17 +308,32 @@ for(i in 1:nrow(hyper.grid)){
                         replace = T,
                         case.weights = data.training$Exp_weights,
                         splitrule = 'gini')
-  pred.tuned1 <- MapPrediction(model.tuned, data.training, 0.5)
-  hyper.grid$train.error[i] <- 1 - confusionMatrix(data = pred.tuned1,
-                                                   reference = data.training$Clm_Flag,
+  pred.tuned1 <- Coerce(model.tuned, data.training, 0.5)
+  hyper.grid$train.error[i] <- 1 - confusionMatrix(pred.tuned1,
+                                                   data.training$Clm_Flag,
                                                    positive = "Y")$overall[[1]]
-  pred.tuned2 <- MapPrediction(model.tuned, data.testing, 0.5)
-  hyper.grid$test.error[i] <- 1 - confusionMatrix(data = pred.tuned2,
-                                                  reference = data.testing$Clm_Flag,
+  pred.tuned2 <- Coerce(model.tuned, data.testing, 0.5)
+  hyper.grid$test.error[i] <- 1 - confusionMatrix(pred.tuned2,
+                                                  data.testing$Clm_Flag,
                                                   positive = "Y")$overall[[1]]
 }
 
 hyper.grid[order(hyper.grid$train.error)[1:5],]  # Display instances of minimum training error
+
+# Select candidate model based on tuning grid
+model.tuned <- ranger(Clm_Flag ~ SexInsured + Female + VehicleType + PC + NCD + AgeCat + VAgeCat,
+                      data = data.training,
+                      num.trees = 20, 
+                      mtry = 5,
+                      probability = T,
+                      min.node.size = 10,
+                      max.depth = 5,
+                      replace = T,
+                      sample.fraction = 0.4,
+                      case.weights = data.training$Exp_weights,
+                      splitrule = 'gini')
+
+pred.tuned <- predict(model.tuned, data.testing)$predictions[, "Y"] * data.testing$Exp_weights
 ```
 
 To preserve the integrity of the testing, it is important that any decisions involving feature selection or hyperparameter tuning are made independently of the unseen data to prevent a phenomenon known as _data leakage_.
@@ -318,22 +342,23 @@ To preserve the integrity of the testing, it is important that any decisions inv
 
 ### Addressing the Bias-Variance Tradeoff
 
-There is a natural tendency to introduce complexity into a model for the sake of increasing predictive accuracy, but when exposed to new data this can result in inconsistent errors (i.e. variance), owing to the inclusion of irrelevant features. On the other hand, overly simplified model structures tend to generate consistent errors (i.e. bias), owing to the exclusion of relevant features.
+There is a natural tendency to introduce complexity into a model for the sake of increasing predictive accuracy, but this can result in inconsistent errors (i.e. variance) when exposed to new observations, owing to the inclusion of irrelevant features. On the other hand, overly simplified model structures tend to generate consistent errors (i.e. bias), owing to the exclusion of relevant features.
 
-Collectively, this phenomenon is referred to as the __bias-variance tradeoff__, which acknowledges that expected loss, while not being eliminable, can at least be minimized within some interior of these effects. A plot of training versus testing error illustrates how finely-tuned models often struggle when applied to a new dataset. 
+Collectively, this phenomenon is referred to as the __bias-variance tradeoff__, which acknowledges that expected loss, while not totally eliminable, can at least be minimized within some interior bounds. A plot of training versus testing error illustrates how finely-tuned models often struggle when applied to novel data. 
 
 ```{r}
 ggplot(subset(hyper.grid, mtry == 5 & sample.fraction == 0.4)) +
   geom_line(aes(y = test.error, x = num.trees, color = "test"), size = 1.5) +
   geom_line(aes(y = train.error, x = num.trees, color = "train"), size = 1.5) +
   theme(legend.position="bottom", legend.direction="horizontal", legend.title = element_blank()) +
-  labs(x = "Number of Trees", y = "Error Rate", title = "Random Forest with 5 of 7 Features, 40% Resampling") +
+  labs(x = "Number of Trees", y = "Error Rate",
+       title = "Random Forest with 5 of 7 Features, 40% Resampling") +
   scale_x_continuous(breaks = seq(0, 20, 2)) +
   scale_color_manual(labels = c("Testing Error", "Training Error"),
                      values = c('test' = "orange", 'train' = "blue"))
 ```
 
-> __Knowledge Check:__ What causes the error rate of the testing set higher than that of the training set?
+> __Knowledge Check:__ In the graph above, what causes the testing error to initially fall, and then gradually rise? Why is testing error generally higher than training error?
 
 # Diagnostic Tools
 
@@ -341,30 +366,30 @@ ggplot(subset(hyper.grid, mtry == 5 & sample.fraction == 0.4)) +
 
 In binary classification problems, a confusion matrix tabulates the number of times that the predicted outcome correctly or incorrectly matched the positive or negative classes. A perfect model maximizes positive predictions among the positive observations (i.e. true positive rate), and minimizes positive predictions among the negative observations (i.e. false positive rate).
 
-In cases where the modeled output is a probability, as is the case in the models established so far, the response can be mapped to a binary outcome using a threshold value. An ROC curve plots the true positive rate against the false positive rate for all such thresholds. The area under this curve measures the closeness to a perfect classification model.
+In cases where the modeled output is a probability, as is the case in the models established so far, the response can be coerced to a binary outcome using a threshold value. An __ROC curve__ plots the true positive rate against the false positive rate for all such thresholds. The area under this curve measures the closeness to a perfect classification model.
 
 ```{r message=F}
 library(ROCR)
-pred <- prediction(predict(model.tree, data.testing, type = "prob")[, "Y"] * data.testing$Exp_weights, data.testing$Clm_Flag)
-
+pred <- prediction(pred.tuned * data.testing$Exp_weights, data.testing$Clm_Flag)
 roc.curve <- data.frame(TPR = performance(pred, "tpr", "fpr")@y.values[[1]],
                         FPR = performance(pred, "tpr", "fpr")@x.values[[1]], row.names = NULL)
 
 ggplot(roc.curve) +
   geom_line(aes(y = TPR, x = FPR), size = 1.5) +
   labs(x = "1 - Specificity", y = "Sensitivity") +
-  ggtitle(paste("Area Under ROC Curve:", round(performance(pred, measure = "auc")@y.values[[1]], 3))) +
+  ggtitle(paste("Area Under ROC Curve:",
+                round(performance(pred, measure = "auc")@y.values[[1]], 3))) +
   scale_x_continuous(breaks = seq(0, 1, 0.1)) +
   theme(legend.position = "none")
 ```
 
 ## Lift Charts
 
-A useful method for comparing results across segments involves the use of lift charts, which averages the predicted or observed response (or both) for each category or band. This can be superimposed with the relative frequencies of exposures, with a focus on credible cells. Alternatively, the predicted values can be ordered and binned to force equal exposures. A two-way lift chart introduces another segment to check for interaction, while a double lift chart compares the results of two models.
+A useful method for comparing results across segments involves the use of __lift charts__, which average the predicted or observed response (or both) for each category or band. This can be superimposed with the relative frequencies of exposures, with a focus on credible cells. Alternatively, the predicted values can be ordered and binned to force equal exposures. A two-way lift chart introduces another segment to check for interaction, while a double lift chart compares the results of two models.
 
 ```{r message=F}
 library(data.table)
-plot.fit.oneway <- function(df, var, exposure, response, fit){  # One-way lift chart
+PlotLift <- function(df, var, exposure, response, fit){  # One-way lift chart
   modeldata <- data.frame(Weight = df[[exposure]],
                           Actual = df[[response]],
                           Fit = df[[fit]],
@@ -382,25 +407,26 @@ plot.fit.oneway <- function(df, var, exposure, response, fit){  # One-way lift c
   liftplot <- ggplot(dframe, aes(x = Factor, y = SumWeight, group = 1)) +
     geom_bar(stat = "identity", aes(x = Factor, y = SumWeight * (resp_max) / (weight_max)),
              col = "#317eac", fill = "#2fa4e7") +
-    geom_line(data = dframe.melt, aes(x = Factor, y = value, color = variable, group = variable), size = 1.5) +
+    geom_line(data = dframe.melt,
+              aes(x = Factor, y = value, color = variable, group = variable), size = 1.5) +
     theme(legend.position="bottom", legend.direction="horizontal", legend.title = element_blank()) +
-    scale_color_manual(labels = c("Reference", "Prediction"), values = c("gray", "orange", "black")) +
+    scale_color_manual(labels = c("Reference", "Prediction"),
+                       values = c("gray", "orange", "black")) +
     theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
     labs(x = var,  y = "Average Claim Incidence", title = paste(var,"One-Way Lift Chart"))
   return(liftplot)
 }
 
 data.lift <- data.testing
-data.lift$YHat <- pred.tuned2
+data.lift$YHat <- as.integer(ifelse(pred.tuned <= 0.5, 0, 1))
 data.lift$Clm_Flag <- as.integer(ifelse(data.lift$Clm_Flag == "Y", 1, 0)) # Recode target variable
-data.lift$YHat <- as.integer(ifelse(data.lift$YHat == "Y", 1, 0))
 
-plot.fit.oneway(data.lift, 'AgeCat', 'Exp_weights', 'Clm_Flag', 'YHat')
+PlotLift(data.lift, 'AgeCat', 'Exp_weights', 'Clm_Flag', 'YHat')
 ```
 
 ## Crunch Residuals
 
-Other useful diagnostics involve residuals which, in the case of classification problems, are hard to interpret. One technique to overcome this challenge is to "crunch" the residuals by aggregating exposures into equally sized bins and averaging the predicted and observed responses.
+Other useful diagnostics involve residuals which, in the case of classification problems, are difficult to interpret. One technique to overcome this challenge is to "crunch" the residuals by aggregating exposures into equally sized bins, averaging the predicted and observed responses within each cell, and comparing the fitted values to their residuals.
 
 ```{r}
 
@@ -410,10 +436,11 @@ Crunch <- function(df, fitted, target, weight, size = 50) {  # Function to compu
   yhat <- df[, fitted]
   wt <- df[, weight]
   z <- as.data.frame(cbind(y, yhat, wt))
-  z <- z[sample(nrow(z)), ]  # Shuffle rows
-  test <- setDT(z)[, as.list(colMeans(.SD)), by = ceiling(cumsum(z[, wt])/sum(z[, wt])*size)]  # Group data
+  z <- z[sample(nrow(z)), ]  # Shuffle rows and assign class based on weight
+  test <- setDT(z)[, as.list(colMeans(.SD)), by = ceiling(cumsum(z[, wt])/sum(z[, wt])*size)]
   test$res <- test$y - test$yhat
-  qplot(y = test$res, x = test$yhat, ylab = "Residual", xlab = "Fitted Value", main = "Crunched Residuals")
+  qplot(y = test$res, x = test$yhat,
+        ylab = "Residual", xlab = "Fitted Value", main = "Crunched Residuals")
 }
 
 Crunch(data.lift, 'YHat', 'Clm_Flag', 'Exp_weights')
